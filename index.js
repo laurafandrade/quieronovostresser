@@ -1,98 +1,58 @@
-import makeWASocket, { useSingleFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
-import { Boom } from '@hapi/boom'
-import qrcode from 'qrcode-terminal'
-import { exec } from 'child_process'
+import express from "express";
+import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
 
-const { state, saveState } = useSingleFileAuthState('./auth.json')
+const app = express();
+const port = process.env.PORT || 3000;
 
-async function startSock() {
-    const sock = makeWASocket({
-        auth: state
-    })
+// Servidor web simples para o ping manter o bot acordado
+app.get("/", (req, res) => {
+  res.send("McFly System Down está ON! 🚀");
+});
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update
-        if (qr) {
-            qrcode.generate(qr, { small: true })
-        }
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut
-            console.log('Conexão fechada', lastDisconnect.error, 'Reconectar:', shouldReconnect)
-            if (shouldReconnect) {
-                startSock()
-            }
-        } else if (connection === 'open') {
-            console.log('🤖 Conectado ao WhatsApp')
-        }
-    })
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
+});
 
-    sock.ev.on('creds.update', saveState)
+// Iniciar o bot do WhatsApp com Baileys
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        const msg = messages[0]
-        if (!msg.message) return
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("./auth_info");
 
-        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text
-        const jid = msg.key.remoteJid
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true, // Vai mostrar o QR no terminal na 1ª vez
+  });
 
-        if (!texto) return
+  sock.ev.on("creds.update", saveCreds);
 
-        // Comando !start
-        if (texto.toLowerCase() === '!start') {
-            const mensagem = `
-🚀 *MCFLY SYSTEM DOWN* 🚀
+  sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect } = update;
+    if(connection === "close") {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      if(statusCode !== DisconnectReason.loggedOut) {
+        console.log("Tentando reconectar...");
+        startBot();
+      } else {
+        console.log("Desconectado (logout). Refaça login escaneando QR.");
+      }
+    } else if(connection === "open") {
+      console.log("Bot conectado ao WhatsApp!");
+    }
+  });
 
-🔗 *Sistema desenvolvido para realizar testes de estresse em servidores e sites.*
+  // Aqui você pode adicionar os eventos e comandos do seu bot.
+  // Exemplo simples para responder 'ping' com 'pong':
 
-📜 *COMANDOS DISPONÍVEIS:*
- 
-👉 */stress url tempo threads*
-    - Exemplo: /stress https://site.com 60 100
-    - ⚠️ Limite: Máx. 800 segundos e 800 threads.
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if(type !== "notify") return;
+    const msg = messages[0];
+    if(!msg.message || msg.key.fromMe) return;
 
-🛑 *Use com responsabilidade. Apenas para testes autorizados.*
-            `
-            await sock.sendMessage(jid, { text: mensagem })
-            return
-        }
-
-        // Comando /stress
-        if (texto.startsWith('/stress')) {
-            const partes = texto.split(' ')
-            if (partes.length !== 4) {
-                await sock.sendMessage(jid, { text: '❌ Uso correto: /stress URL TEMPO THREADS' })
-                return
-            }
-
-            const url = partes[1]
-            const tempo = parseInt(partes[2])
-            const threads = parseInt(partes[3])
-
-            // Validação dos limites
-            if (isNaN(tempo) || isNaN(threads)) {
-                await sock.sendMessage(jid, { text: '❌ Tempo e Threads precisam ser números.' })
-                return
-            }
-            if (tempo > 800 || threads > 800) {
-                await sock.sendMessage(jid, { text: '❌ Limite máximo é 800 segundos e 800 threads.' })
-                return
-            }
-
-            await sock.sendMessage(jid, { text: `🚀 Iniciando stress em:\n🌐 ${url}\n⏳ Tempo: ${tempo}s\n💥 Threads: ${threads}` })
-
-            exec(`python3 stress.py ${url} ${tempo} ${threads}`, (error, stdout, stderr) => {
-                if (error) {
-                    sock.sendMessage(jid, { text: `❌ Erro:\n${error.message}` })
-                    return
-                }
-                if (stderr) {
-                    sock.sendMessage(jid, { text: `⚠️ Atenção:\n${stderr}` })
-                    return
-                }
-                sock.sendMessage(jid, { text: `✅ Finalizado:\n${stdout}` })
-            })
-        }
-    })
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if(text?.toLowerCase() === "ping") {
+      await sock.sendMessage(msg.key.remoteJid, { text: "pong" }, { quoted: msg });
+    }
+  });
 }
 
-startSock()
+startBot();
