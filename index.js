@@ -1,5 +1,4 @@
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys'
-import { Boom } from '@hapi/boom'
 import qrcode from 'qrcode-terminal'
 
 async function startSock() {
@@ -7,21 +6,22 @@ async function startSock() {
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false // deprecated, vamos lidar manualmente
+    printQRInTerminal: false
   })
 
   sock.ev.on('connection.update', (update) => {
     const { connection, qr, lastDisconnect } = update
 
     if (qr) {
-      // Gera o QR code no terminal para você escanear com WhatsApp
       qrcode.generate(qr, { small: true })
       console.log('QR code gerado, escaneie com o WhatsApp para conectar.')
     }
 
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
-      console.log('Conexão fechada, motivo:', lastDisconnect.error, 'Reconn:', shouldReconnect)
+      // Checa se lastDisconnect existe e se tem error com output.statusCode
+      const statusCode = lastDisconnect?.error?.output?.statusCode
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut
+      console.log('Conexão fechada, motivo:', lastDisconnect?.error, 'Reconn:', shouldReconnect)
       if (shouldReconnect) {
         startSock()
       }
@@ -33,5 +33,4 @@ async function startSock() {
   sock.ev.on('creds.update', saveCreds)
 }
 
-startSock()
-  .catch(console.error)
+startSock().catch(console.error)
