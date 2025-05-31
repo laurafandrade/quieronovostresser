@@ -1,36 +1,39 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys'
-import qrcode from 'qrcode-terminal'
+import { makeWASocket, DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import P from "pino";
 
-async function startSock() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info')
+async function startBot() {
+  // Cria estado de autenticação, usando pasta 'auth_info'
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
   const sock = makeWASocket({
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: true, // Mostra QR no terminal
     auth: state,
-    printQRInTerminal: false
-  })
+  });
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, qr, lastDisconnect } = update
-
+    const { connection, lastDisconnect, qr } = update;
+    
     if (qr) {
-      qrcode.generate(qr, { small: true })
-      console.log('QR code gerado, escaneie com o WhatsApp para conectar.')
+      console.log("🚩 Escaneie o QR Code acima com seu WhatsApp");
     }
 
     if (connection === 'close') {
-      // Checa se lastDisconnect existe e se tem error com output.statusCode
-      const statusCode = lastDisconnect?.error?.output?.statusCode
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut
-      console.log('Conexão fechada, motivo:', lastDisconnect?.error, 'Reconn:', shouldReconnect)
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('⚠️ Conexão fechada, tentando reconectar...', lastDisconnect?.error?.message);
       if (shouldReconnect) {
-        startSock()
+        startBot();
+      } else {
+        console.log('🛑 Sessão desconectada, faça login novamente escaneando o QR.');
       }
-    } else if (connection === 'open') {
-      console.log('Conectado ao WhatsApp!')
     }
-  })
 
-  sock.ev.on('creds.update', saveCreds)
+    if (connection === 'open') {
+      console.log('✅ Conectado ao WhatsApp!');
+    }
+  });
+
+  sock.ev.on('creds.update', saveCreds);
 }
 
-startSock().catch(console.error)
+startBot();
