@@ -1,58 +1,47 @@
-import express from "express";
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import makeWASocket from '@adiwajshing/baileys';
+import { Boom } from '@hapi/boom';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
 
-const app = express();
-const port = process.env.PORT || 3000;
+const authFile = './auth_info.json';
 
-// Servidor web simples para o ping manter o bot acordado
-app.get("/", (req, res) => {
-  res.send("McFly System Down está ON! 🚀");
-});
-
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
-
-// Iniciar o bot do WhatsApp com Baileys
-
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("./auth_info");
+async function startSock() {
+  // Tenta carregar sessão salva, se existir
+  let authState = {};
+  if (fs.existsSync(authFile)) {
+    authState = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+  }
 
   const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true, // Vai mostrar o QR no terminal na 1ª vez
+    auth: authState,
+    printQRInTerminal: false, // remove essa opção porque está deprecated
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
-    if(connection === "close") {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      if(statusCode !== DisconnectReason.loggedOut) {
-        console.log("Tentando reconectar...");
-        startBot();
-      } else {
-        console.log("Desconectado (logout). Refaça login escaneando QR.");
+    if (qr) {
+      // Gera QR no terminal
+      qrcode.generate(qr, { small: true });
+      console.log('Escaneie o QR Code acima com o WhatsApp');
+    }
+
+    if (connection === 'close') {
+      const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !==
+        Boom.statusCodes.logout;
+      console.log('Conexão fechada devido a', lastDisconnect.error, ', tentando reconectar:', shouldReconnect);
+      if (shouldReconnect) {
+        startSock(); // tenta reconectar
       }
-    } else if(connection === "open") {
-      console.log("Bot conectado ao WhatsApp!");
+    } else if (connection === 'open') {
+      console.log('Conectado ao WhatsApp!');
     }
   });
 
-  // Aqui você pode adicionar os eventos e comandos do seu bot.
-  // Exemplo simples para responder 'ping' com 'pong':
-
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if(type !== "notify") return;
-    const msg = messages[0];
-    if(!msg.message || msg.key.fromMe) return;
-
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-    if(text?.toLowerCase() === "ping") {
-      await sock.sendMessage(msg.key.remoteJid, { text: "pong" }, { quoted: msg });
-    }
+  sock.ev.on('creds.update', () => {
+    // Salva sessão no arquivo toda vez que atualizar credenciais
+    fs.writeFileSync(authFile, JSON.stringify(sock.authState, null, 2));
   });
 }
 
-startBot();
+startSock();
