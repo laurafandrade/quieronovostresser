@@ -1,47 +1,37 @@
-import makeWASocket from '@adiwajshing/baileys';
-import { Boom } from '@hapi/boom';
-import qrcode from 'qrcode-terminal';
-import fs from 'fs';
-
-const authFile = './auth_info.json';
+import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys'
+import { Boom } from '@hapi/boom'
+import qrcode from 'qrcode-terminal'
 
 async function startSock() {
-  // Tenta carregar sessão salva, se existir
-  let authState = {};
-  if (fs.existsSync(authFile)) {
-    authState = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-  }
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info')
 
   const sock = makeWASocket({
-    auth: authState,
-    printQRInTerminal: false, // remove essa opção porque está deprecated
-  });
+    auth: state,
+    printQRInTerminal: false // deprecated, vamos lidar manualmente
+  })
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    const { connection, qr, lastDisconnect } = update
 
     if (qr) {
-      // Gera QR no terminal
-      qrcode.generate(qr, { small: true });
-      console.log('Escaneie o QR Code acima com o WhatsApp');
+      // Gera o QR code no terminal para você escanear com WhatsApp
+      qrcode.generate(qr, { small: true })
+      console.log('QR code gerado, escaneie com o WhatsApp para conectar.')
     }
 
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !==
-        Boom.statusCodes.logout;
-      console.log('Conexão fechada devido a', lastDisconnect.error, ', tentando reconectar:', shouldReconnect);
+      const shouldReconnect = (lastDisconnect.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
+      console.log('Conexão fechada, motivo:', lastDisconnect.error, 'Reconn:', shouldReconnect)
       if (shouldReconnect) {
-        startSock(); // tenta reconectar
+        startSock()
       }
     } else if (connection === 'open') {
-      console.log('Conectado ao WhatsApp!');
+      console.log('Conectado ao WhatsApp!')
     }
-  });
+  })
 
-  sock.ev.on('creds.update', () => {
-    // Salva sessão no arquivo toda vez que atualizar credenciais
-    fs.writeFileSync(authFile, JSON.stringify(sock.authState, null, 2));
-  });
+  sock.ev.on('creds.update', saveCreds)
 }
 
-startSock();
+startSock()
+  .catch(console.error)
