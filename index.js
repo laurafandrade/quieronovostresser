@@ -1,21 +1,21 @@
 import { makeWASocket, DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import P from "pino";
+import qrcode from "qrcode-terminal";
 
 async function startBot() {
-  // Cria estado de autenticação, usando pasta 'auth_info'
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
   const sock = makeWASocket({
     logger: P({ level: 'silent' }),
-    printQRInTerminal: true, // Mostra QR no terminal
     auth: state,
   });
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
-    
+
     if (qr) {
-      console.log("🚩 Escaneie o QR Code acima com seu WhatsApp");
+      console.log('🚩 Escaneie o QR Code abaixo com seu WhatsApp:');
+      qrcode.generate(qr, { small: true });
     }
 
     if (connection === 'close') {
