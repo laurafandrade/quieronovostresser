@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>McFly System Down - Painel de Ataque</title>
+  <style>
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #ff6600;
+      margin-bottom: 20px;
+      text-shadow: 0 0 10px #ff6600;
+    }
+    form {
+      background: #161b22;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px #ff6600;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+    }
+    label {
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #f0a040;
+    }
+    input {
+      padding: 8px;
+      margin-bottom: 15px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      outline: none;
+    }
+    input:focus {
+      box-shadow: 0 0 5px #ff6600;
+    }
+    button {
+      background: #ff6600;
+      border: none;
+      padding: 10px;
+      font-size: 1em;
+      color: #0d1117;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: #ffa64d;
+    }
+    #response {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #ffa64d;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 McFly System Down 🔥</h1>
+  <form id="attackForm">
+    <label for="url">URL (https:// ou http://)</label>
+    <input type="text" id="url" name="url" placeholder="https://seusite.com" required />
+    <label for="tempo">Tempo (segundos) - máximo 500</label>
+    <input type="number" id="tempo" name="tempo" min="1" max="500" value="60" required />
+    <label for="threads">Threads - máximo 700</label>
+    <input type="number" id="threads" name="threads" min="1" max="700" value="50" required />
+    <button type="submit">Executar ataque</button>
+  </form>
+  <div id="response"></div>
+
+  <script>
+    const form = document.getElementById('attackForm');
+    const responseDiv = document.getElementById('response');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const url = form.url.value.trim();
+      const tempo = form.tempo.value.trim();
+      const threads = form.threads.value.trim();
+
+      responseDiv.textContent = 'Iniciando ataque...';
+
+      try {
+        const res = await fetch('/attack', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ url, tempo, threads })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          responseDiv.textContent = data.message;
+        } else {
+          responseDiv.textContent = `Erro: ${data.error}`;
+        }
+      } catch (err) {
+        responseDiv.textContent = 'Erro ao conectar com o servidor.';
+      }
+    });
+  </script>
+</body>
+</html>
