@@ -7,7 +7,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Limites
 const MAX_TIME = 500; // segundos
-const MAX_THREADS = 700;
+const MAX_THREADS = 950;
 
 // Função flood com logs
 async function flood(url, tempo, threads) {
