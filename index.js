@@ -7,7 +7,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Limites
 const MAX_TIME = 500; // segundos
-const MAX_THREADS = 950;
+const MAX_THREADS = 950; // ajustado para 950
 
 // Função flood com logs
 async function flood(url, tempo, threads) {
@@ -62,7 +62,7 @@ app.get('/', (req, res) => {
         <form method="POST" action="/attack">
           <input type="url" name="url" placeholder="URL (https://...)" required pattern="https?://.+" /><br/>
           <input type="number" name="tempo" placeholder="Tempo (segundos, max 500)" min="1" max="${MAX_TIME}" required /><br/>
-          <input type="number" name="threads" placeholder="Threads (max 700)" min="1" max="${MAX_THREADS}" required /><br/>
+          <input type="number" name="threads" placeholder="Threads (max 950)" min="1" max="${MAX_THREADS}" required /><br/>
           <button type="submit">Executar Ataque</button>
         </form>
         <small>⚠️ Uso exclusivo para testes em sites autorizados pela sua equipe.</small>
@@ -97,8 +97,8 @@ app.post('/attack', async (req, res) => {
   `);
 });
 
-// Start servidor
+// Start servidor na porta 3000 ou a que o ambiente definir
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`McFly System Down rodando na porta ${PORT}`);
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
